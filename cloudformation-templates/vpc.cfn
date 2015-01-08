@@ -1,0 +1,369 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Description" : "VPC layer",
+	"Parameters" : {
+		"KeyName" : {
+			"Description" : "Public/private key pairs allow you to securely connect to your instance after it launches",
+			"Type" : "AWS::EC2::KeyPair::KeyName"
+		},
+		"Environment" : {
+			"Description" : "Environment, one of development, staging, or production",
+			"Type" : "String",
+			"AllowedValues" : [ "development", "staging", "production"],
+			"Default":"development"
+		},
+		"NotificationEmail": {
+			"Description": "Email address for operational notifications",
+			"Type": "String"
+		},
+		"NATInstanceType" : {
+			"Description" : "NAT instance type",
+			"Type" : "String",
+			"Default" : "t2.micro",
+			"AllowedValues" : [ "t2.micro", "t2.small", "t2.medium", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge", "r3.large", "r3.xlarge","r3.2xlarge","r3.4xlarge","r3.8xlarge" ],
+			"ConstraintDescription" : "must be a valid EC2 instance type."
+		}		
+	},
+	"Conditions" : {
+		"IsDevelopment" : {"Fn::Equals" : [{"Ref" : "Environment"}, "development"]},
+		"IsProduction" : { "Fn::Or" : [{"Fn::Equals" : [{"Ref" : "Environment"}, "production"]}, {"Fn::Equals" : [{"Ref" : "Environment"}, "staging"]}]}	
+	},		
+	"Mappings" : {
+		"SubnetConfig" : {
+			"VPC"     	: { "CIDR" : "10.0.0.0/16"  },
+			"Public1"	: { "CIDR" : "10.0.100.0/24"  },
+			"Public2"	: { "CIDR" : "10.0.101.0/24"  },
+			"Private1"	: { "CIDR" : "10.0.200.0/24"  },
+			"Private2"	: { "CIDR" : "10.0.201.0/24"  }
+		},
+		"AMINames" : {
+			"NAT" : { "name" : "amzn-ami-vpc-nat-hvm-2014.03.2.x86_64-ebs" }
+		},
+		"NATAMIs" : { 
+			"us-east-1"      : { "AMI" : "ami-4c9e4b24" },
+			"us-west-2"      : { "AMI" : "ami-bb69128b" },
+			"us-west-1"      : { "AMI" : "ami-2b2b296e" },
+			"eu-west-1"      : { "AMI" : "ami-3760b040" },
+			"eu-central-1"   : { "AMI" : "ami-204c7a3d" },
+			"ap-southeast-1" : { "AMI" : "ami-b082dae2" },
+			"ap-southeast-2" : { "AMI" : "ami-996402a3" },
+			"ap-northeast-1" : { "AMI" : "ami-55c29e54" },
+			"sa-east-1"      : { "AMI" : "ami-b972dba4" }
+		}
+	},
+	"Resources" : {
+		"VPC" : {
+			"Type" : "AWS::EC2::VPC",
+			"Properties" : {
+				"CidrBlock" : {"Fn::FindInMap" : [ "SubnetConfig" , "VPC", "CIDR"] },
+				"EnableDnsHostnames" : "true",
+				"Tags": [
+					{ "Key" : "Name", "Value" : { "Fn::Join" : ["",[{"Ref": "AWS::StackName"}, " VPC"]]}},
+					{ "Key" : "Environment", "Value" : { "Ref" : "Environment" }}
+				]				
+			}
+		},
+		"InternetGateway" : {
+			"Type" : "AWS::EC2::InternetGateway",
+			"Properties" : {
+			}
+		},
+		"AttachGateway" : {
+			"Type" : "AWS::EC2::VPCGatewayAttachment",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"InternetGatewayId" : { "Ref" : "InternetGateway" }
+			}
+		},
+		"PublicSubnet1" : {
+			"Type" : "AWS::EC2::Subnet",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"CidrBlock" : {"Fn::FindInMap" : [ "SubnetConfig" , "Public1", "CIDR"] },
+				"AvailabilityZone" : { "Fn::Select" : [ 0, { "Fn::GetAZs" : ""} ] }
+			}
+		},
+		"PublicRouteTable1" : {
+			"Type" : "AWS::EC2::RouteTable",
+			"Properties" : {
+				"VpcId" : {"Ref" : "VPC"}
+			}
+		},	
+		"PublicRoute1" : {
+			"Type" : "AWS::EC2::Route",
+			"Properties" : {
+				"RouteTableId" : { "Ref" : "PublicRouteTable1" },
+				"DestinationCidrBlock" : "0.0.0.0/0",
+				"GatewayId" : { "Ref" : "InternetGateway" }
+			}
+		},
+		"PublicSubnetRouteTableAssociation1" : {
+			"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties" : {
+				"SubnetId" : { "Ref" : "PublicSubnet1" },
+				"RouteTableId" : { "Ref" : "PublicRouteTable1" }
+			}
+		},
+		"PublicSubnet2" : {
+			"Type" : "AWS::EC2::Subnet",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"CidrBlock" : {"Fn::FindInMap" : [ "SubnetConfig" , "Public2", "CIDR"] },
+				"AvailabilityZone" : { "Fn::Select" : [ 1, { "Fn::GetAZs" : ""} ] }
+			}
+		},
+		"PublicRouteTable2" : {
+			"Type" : "AWS::EC2::RouteTable",
+			"Properties" : {
+				"VpcId" : {"Ref" : "VPC"}
+			}
+		},	
+		"PublicRoute2" : {
+			"Type" : "AWS::EC2::Route",
+			"Properties" : {
+				"RouteTableId" : { "Ref" : "PublicRouteTable2" },
+				"DestinationCidrBlock" : "0.0.0.0/0",
+				"GatewayId" : { "Ref" : "InternetGateway" }
+			}
+		},
+		"PublicSubnetRouteTableAssociation2" : {
+			"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+			"Properties" : {
+				"SubnetId" : { "Ref" : "PublicSubnet2" },
+				"RouteTableId" : { "Ref" : "PublicRouteTable2" }
+			}
+		},
+		"PrivateSubnet1" : {
+			"Type" : "AWS::EC2::Subnet",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"CidrBlock" : {"Fn::FindInMap" : [ "SubnetConfig" , "Private1", "CIDR"] },
+				"AvailabilityZone" : { "Fn::Select" : [ 0, { "Fn::GetAZs" : ""} ] }
+			}
+		},
+		"PrivateRouteTable1" : {
+			"Type" : "AWS::EC2::RouteTable",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"VpcId" : {"Ref" : "VPC"}
+			}
+		},	
+		"PrivateRoute1" : {
+			"Type" : "AWS::EC2::Route",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"RouteTableId" : { "Ref" : "PrivateRouteTable1" },
+				"DestinationCidrBlock" : "0.0.0.0/0",
+				"InstanceId" : { "Ref" : "NATInstance1" }
+			}
+		},
+		"PrivateSubnetRouteTableAssociation1" : {
+			"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"SubnetId" : { "Ref" : "PrivateSubnet1" },
+				"RouteTableId" : { "Ref" : "PrivateRouteTable1" }
+			}
+		},
+		"PrivateSubnet2" : {
+			"Type" : "AWS::EC2::Subnet",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"VpcId" : { "Ref" : "VPC" },
+				"CidrBlock" : {"Fn::FindInMap" : [ "SubnetConfig" , "Private2", "CIDR"] },
+				"AvailabilityZone" : { "Fn::Select" : [ 1, { "Fn::GetAZs" : ""} ] }
+			}
+		},
+		"PrivateRouteTable2" : {
+			"Type" : "AWS::EC2::RouteTable",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"VpcId" : {"Ref" : "VPC"}
+			}
+		},	
+		"PrivateRoute2" : {
+			"Type" : "AWS::EC2::Route",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"RouteTableId" : { "Ref" : "PrivateRouteTable2" },
+				"DestinationCidrBlock" : "0.0.0.0/0",
+				"InstanceId" : { "Ref" : "NATInstance2" }
+			}
+		},
+		"PrivateSubnetRouteTableAssociation2" : {
+			"Type" : "AWS::EC2::SubnetRouteTableAssociation",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"SubnetId" : { "Ref" : "PrivateSubnet2" },
+				"RouteTableId" : { "Ref" : "PrivateRouteTable2" }
+			}
+		},
+		"NATSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"GroupDescription" : "Enable internal access to the NAT device",
+				"VpcId" : { "Ref" : "VPC" },
+				"SecurityGroupIngress" : [
+					{ "IpProtocol" : "tcp", "FromPort" : "80",  "ToPort" : "80",  "CidrIp" : "0.0.0.0/0"} ,
+					{ "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0"} ,
+					{ "IpProtocol" : "tcp", "FromPort" : "25",  "ToPort" : "25",  "CidrIp" : "0.0.0.0/0"} ,
+					{ "IpProtocol" : "tcp", "FromPort" : "587", "ToPort" : "587", "CidrIp" : "0.0.0.0/0"} ,
+					{ "IpProtocol" : "tcp", "FromPort" : "22",  "ToPort" : "22",  "CidrIp" : "0.0.0.0/0"} ],
+				"SecurityGroupEgress" : [
+					{ "IpProtocol" : "tcp", "FromPort" : "80",  "ToPort" : "80",  "CidrIp" : "0.0.0.0/0"} ,
+					{ "IpProtocol" : "tcp", "FromPort" : "22",  "ToPort" : "22",  "CidrIp" : "0.0.0.0/0"} ,
+					{ "IpProtocol" : "tcp", "FromPort" : "25",  "ToPort" : "25",  "CidrIp" : "0.0.0.0/0"} ,
+					{ "IpProtocol" : "tcp", "FromPort" : "587", "ToPort" : "587", "CidrIp" : "0.0.0.0/0"} ,
+					{ "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0"} ]
+			}
+		},
+		"BastionSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"GroupDescription" : "Enable access to the Bastion host",
+				"VpcId" : { "Ref" : "VPC" },
+				"SecurityGroupIngress" : [ { "IpProtocol" : "tcp", "FromPort" : "22",  "ToPort" : "22",  "CidrIp" : "0.0.0.0/0"} ],
+				"SecurityGroupEgress"  : [ 
+					{ "IpProtocol" : "tcp", "FromPort" : "22",  "ToPort" : "22",  "CidrIp" : { "Fn::FindInMap" : [ "SubnetConfig", "VPC", "CIDR" ]}}
+				]
+			}
+		},	
+		"NATInstance1" : {
+			"Type" : "AWS::EC2::Instance",
+			"Condition" : "IsProduction",
+			"DependsOn" : "InternetGateway",
+			"Properties" : {
+				"InstanceType" : { "Ref" : "NATInstanceType" },
+				"KeyName" : { "Ref" : "KeyName" },
+				"SourceDestCheck" : "false",
+				"ImageId" : { "Fn::FindInMap" : [ "NATAMIs", { "Ref" : "AWS::Region" }, "AMI" ]},
+				"NetworkInterfaces" : [{ 
+					"AssociatePublicIpAddress" : "true", 
+					"DeviceIndex" : "0",
+					"SubnetId" : { "Ref" : "PublicSubnet1" },
+					"GroupSet" : [{ "Ref" : "NATSecurityGroup" }, { "Ref" : "BastionSecurityGroup" }]					
+				}],
+				"Tags": [
+					{ "Key" : "Name", "Value" : { "Fn::Join" : [" ",[{"Ref" : "Environment"}, "NAT 1"]]}},
+					{ "Key" : "Environment", "Value" : { "Ref" : "Environment" }},
+					{ "Key" : "Role", "Value" : "NAT"}			
+				]
+			}
+		},
+		"NATInstance2" : {
+			"Type" : "AWS::EC2::Instance",
+			"Condition" : "IsProduction",
+			"DependsOn" : "InternetGateway",
+			"Properties" : {
+				"InstanceType" : { "Ref" : "NATInstanceType" },
+				"KeyName" : { "Ref" : "KeyName" },
+				"SourceDestCheck" : "false",
+				"ImageId" : { "Fn::FindInMap" : [ "NATAMIs", { "Ref" : "AWS::Region" }, "AMI" ]},
+				"NetworkInterfaces" : [{ 
+					"AssociatePublicIpAddress" : "true", 
+					"DeviceIndex" : "0",
+					"SubnetId" : { "Ref" : "PublicSubnet2" },
+					"GroupSet" : [{ "Ref" : "NATSecurityGroup" }, { "Ref" : "BastionSecurityGroup" }]					
+				}],
+				"Tags": [
+					{ "Key" : "Name", "Value" : { "Fn::Join" : [" ",[{"Ref" : "Environment"}, "NAT 2"]]}},
+					{ "Key" : "Environment", "Value" : { "Ref" : "Environment" }},
+					{ "Key" : "Role", "Value" : "NAT"}				
+				]
+			}
+		},		
+		"DataSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"VpcId": {"Ref" : "VPC"},			
+				"GroupDescription" : "Enable port DB ports",
+				"SecurityGroupIngress" : [ 
+					{"IpProtocol" : "tcp", "FromPort" : "3306", "ToPort" : "3306", "SourceSecurityGroupId": { "Ref": "WebSecurityGroup" }}
+				]
+			}
+		},
+		"WebSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup",
+			"Properties" : {
+				"VpcId": {"Ref" : "VPC"},			
+				"GroupDescription" : "Enable SSH access and HTTP access on the inbound port",
+				"SecurityGroupIngress" : [ 
+					{"IpProtocol" : "tcp", "FromPort" : "80", "ToPort" : "80", "CidrIp" : "0.0.0.0/0"},
+					{"IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "0.0.0.0/0"}
+				]
+			}
+		},		
+		"WebSecurityGroupIngressDevelopment" : {
+			"Type" : "AWS::EC2::SecurityGroupIngress",
+			"Condition" : "IsDevelopment",
+			"Properties" : {
+				"GroupId" : { "Ref" : "WebSecurityGroup" },
+				"IpProtocol" : "tcp",
+				"FromPort" : "22",
+				"ToPort" : "22",
+				"CidrIp" : "0.0.0.0/0"
+			}
+		},		
+		"WebSecurityGroupIngressProduction" : {
+			"Type" : "AWS::EC2::SecurityGroupIngress",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"GroupId" : { "Ref" : "WebSecurityGroup" },
+				"IpProtocol" : "tcp",
+				"FromPort" : "22",
+				"ToPort" : "22",
+				"SourceSecurityGroupId": { "Ref": "BastionSecurityGroup" }
+			}
+		},				
+		"NotificationTopic": {
+		  "Type": "AWS::SNS::Topic",
+		  "Properties": {
+			"Subscription": [{
+			  "Endpoint": { "Ref": "NotificationEmail" },
+			  "Protocol": "email"
+			}]
+		  }
+		}
+	},
+	"Outputs" : {
+		"VPC" : {
+		  "Description" : "ID of the VPC",
+		  "Value" :  { "Ref" : "VPC" }
+		},
+		"BastionSecurityGroup" : {
+		  "Description" : "ID of the Bastion security group",
+		  "Value" :  { "Ref" : "BastionSecurityGroup" }
+		},
+		"DataSecurityGroup" : {
+		  "Description" : "ID of the Data security group",
+		  "Value" :  { "Ref" : "DataSecurityGroup" }
+		},
+		"WebSecurityGroup" : {
+		  "Description" : "ID of the App-API security group",
+		  "Value" :  { "Ref" : "WebSecurityGroup" }
+		},
+		"PublicSubnet1" : {
+		  "Description" : "ID of Public subnet #1",
+		  "Value" :  { "Ref" : "PublicSubnet1" }
+		},
+		"PublicSubnet2" : {
+		  "Description" : "ID of Public subnet #2",
+		  "Value" :  { "Ref" : "PublicSubnet2" }
+		},
+		"PrivateSubnet1" : {
+		  "Condition" : "IsProduction",
+		  "Description" : "ID of Private subnet #1",
+		  "Value" :  { "Ref" : "PrivateSubnet1" }
+		},
+		"PrivateSubnet2" : {
+		  "Condition" : "IsProduction",
+		  "Description" : "ID of Private subnet #2",
+		  "Value" :  { "Ref" : "PrivateSubnet2" }
+		},
+		"NotificationTopic" : {
+		  "Description" : "ID of SNS Topic",
+		  "Value" :  { "Ref" : "NotificationTopic" }
+		}
+	}
+}

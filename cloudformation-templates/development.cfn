@@ -1,0 +1,120 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Description" : "Development Stack",
+	"Parameters" : {
+		"KeyName" : {
+			"Description" : "Public/private key pairs allow you to securely connect to your instance after it launches",
+			"Type" : "AWS::EC2::KeyPair::KeyName"
+		},
+		"Environment" : {
+			"Description" : "Environment, one of development, staging, or production",
+			"Type" : "String",
+			"AllowedValues" : [ "development", "staging", "production"],
+			"Default" : "development"
+		},
+		"NotificationEmail": {
+			"Description": "Email address for operational notifications",
+			"Type": "String"
+		},	
+		"DatabaseUser": {
+			"Description" : "The database admin account username",
+			"Default" : "admin",
+			"Type": "String",
+			"MinLength": "1",
+			"MaxLength": "16",
+			"AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+			"ConstraintDescription" : "must begin with a letter and contain only alphanumeric characters."
+		},
+		"DatabasePassword": {
+			"NoEcho": "true",
+			"Description" : "The database admin account password",
+			"Type": "String",
+			"MinLength": "1",
+			"MaxLength": "41",
+			"AllowedPattern" : "[a-zA-Z0-9]+",
+			"ConstraintDescription" : "must contain only alphanumeric characters."
+		},
+		"DatabaseClass" : {
+			"Default" : "db.t1.micro",
+			"Description" : "Database instance class",
+			"Type" : "String",
+			"AllowedValues" : [ "db.t1.micro", "db.m1.small", "db.m1.medium", "db.m1.large", "db.m1.xlarge", "db.m2.xlarge", "db.m2.2xlarge", "db.m2.4xlarge", "db.cr1.8xlarge" ],
+			"ConstraintDescription" : "must select a valid database instance type."
+		},
+		"DatabaseStorage" : {
+			"Default": "5",
+			"Description" : "The size of the database (Gb)",
+			"Type": "Number",
+			"MinValue": "5",
+			"MaxValue": "1024",
+			"ConstraintDescription" : "must be between 5 and 1024Gb."
+		}
+	},
+	"Conditions" : {
+	},		
+	"Mappings" : {
+	},
+	"Resources" : {
+        "VPC" : {
+  	       "Type" : "AWS::CloudFormation::Stack",
+	       "Properties" : {
+	           "TemplateURL" : "https://s3.amazonaws.com/chinookbook-deploy/templates/vpc.cfn",
+	           "Parameters" : {
+	               "KeyName" : { "Ref" : "KeyName" },				
+				   "Environment" : { "Ref" : "Environment" },
+				   "NotificationEmail" : { "Ref" : "NotificationEmail" }
+	           }
+   	       }
+        },
+		"Data" : {
+			"Type" : "AWS::CloudFormation::Stack",
+			"Properties" : {
+				"TemplateURL" : "https://s3.amazonaws.com/chinookbook-deploy/templates/data.cfn",
+				"Parameters" : {
+					"VPC" : { "Fn::GetAtt" : [ "VPC" , "Outputs.VPC" ] },
+					"Environment" : { "Ref" : "Environment"},
+					"DatabaseUser" : { "Ref" : "DatabaseUser" },			
+					"DatabasePassword" : { "Ref" : "DatabasePassword" },			
+					"DatabaseClass" : { "Ref" : "DatabaseClass" },			
+					"DatabaseStorage" : { "Ref" : "DatabaseStorage" },
+					"DataWriterSecurityGroup" : { "Fn::GetAtt" : [ "VPC" , "Outputs.DataSecurityGroup" ] },
+					"DataReaderSecurityGroup" : { "Fn::GetAtt" : [ "VPC" , "Outputs.DataSecurityGroup" ] },
+					"DataReporterSecurityGroup" : { "Fn::GetAtt" : [ "VPC" , "Outputs.DataSecurityGroup" ] },
+					"DataSubnet1" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PublicSubnet1" ] },
+					"DataSubnet2" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PublicSubnet2" ] },
+					"NotificationTopic" : { "Fn::GetAtt" : [ "VPC" , "Outputs.NotificationTopic" ] }
+				}
+			}
+		},
+        "Beanstalk" : {
+  	       "Type" : "AWS::CloudFormation::Stack",
+	       "Properties" : {
+				"TemplateURL" : "https://s3.amazonaws.com/chinookbook-deploy/templates/beanstalk.cfn",
+				"Parameters" : {
+					"KeyName" : { "Ref" : "KeyName" },				
+					"Environment" : { "Ref" : "Environment"},
+					"NotificationTopic" : { "Fn::GetAtt" : [ "VPC" , "Outputs.NotificationTopic" ] },		
+					"AppAPIInstanceType" : "t2.micro",
+					"VPC" : { "Fn::GetAtt" : [ "VPC" , "Outputs.VPC" ] },
+					"PublicSubnet1" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PublicSubnet1" ] },
+					"PublicSubnet2" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PublicSubnet2" ] },
+					"PrivateSubnet1" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PublicSubnet1" ] },
+					"PrivateSubnet2" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PublicSubnet2" ] },
+					"DBUsername" : {"Ref" : "DatabaseUser"},
+					"DBPassword" : { "Ref" : "DatabasePassword" },
+					"DBHostname" : { "Fn::GetAtt" : [ "Data" , "Outputs.MasterEndpoint" ] },
+					"DBPort" : { "Fn::GetAtt" : [ "Data" , "Outputs.MasterPort" ] },
+					"BastionSecurityGroup" : { "Fn::GetAtt" : [ "VPC" , "Outputs.BastionSecurityGroup" ] },
+					"WebSecurityGroup" : { "Fn::GetAtt" : [ "VPC" , "Outputs.WebSecurityGroup" ] }
+	           }					
+
+   	       }
+        }		
+	},
+	"Outputs" : {
+		"VPC" : {
+		  "Description" : "ID of the VPC",
+		  "Value" :  { "Fn::GetAtt" : [ "VPC" , "Outputs.VPC" ] }
+		}
+	}
+}

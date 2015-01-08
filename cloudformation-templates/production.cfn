@@ -1,0 +1,98 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Description" : "Production Stack",
+	"Parameters" : {
+		"WebServerInstanceType" : {
+			"Description" : "Web server instance type. Enter t1.micro, m3.medium, m3.large, m3.xlarge, m3.2xlarge, c3.large, c3.xlarge, c3.2xlarge, c3.4xlarge, or c3.8xlarge",
+			"Type" : "String",
+			"Default" : "m3.medium",
+			"AllowedValues" : [ "t1.micro", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge" ],
+			"ConstraintDescription" : "must be a valid EC2 instance type."
+		},	
+		"WebServerFleetMinimumSize" : {
+			"Type" : "Number",
+			"MinValue" : "1",
+			"MaxValue" : "10",
+			"Default" : "1"
+		},
+		"WebServerFleetMaximumSize" : {
+			"Type" : "Number",
+			"MinValue" : "1",
+			"MaxValue" : "10",
+			"Default" : "1"
+		},
+		"WebServerFleetDesiredSize" : {
+			"Type" : "Number",
+			"MinValue" : "1",
+			"MaxValue" : "10",
+			"Default" : "1"
+		},		
+		"MongoInstanceType" : {
+			"Description" : "Mongo instance type. Enter t1.micro, m3.medium, m3.large, m3.xlarge, m3.2xlarge, c3.large, c3.xlarge, c3.2xlarge, c3.4xlarge, or c3.8xlarge",
+			"Type" : "String",
+			"Default" : "m3.xlarge",
+			"AllowedValues" : [ "t1.micro", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge" ],
+			"ConstraintDescription" : "must be a valid EC2 instance type."
+		}		
+	},
+	"Resources" : {
+        "VPC" : {
+  	       "Type" : "AWS::CloudFormation::Stack",
+	       "Properties" : {
+	           "TemplateURL" : "https://s3.amazonaws.com/boomcloud-templates/vpc.cfn",
+	           "Parameters" : {
+	               "KeyName" : "boomcloud-prod",				
+				   "Environment" : "production",
+				   "NATInstanceType" : "t2.small",
+				   "NotificationEmail" : "jerry@awsgeek.com",
+				   "Enabled" : "true"
+	           }
+   	       }
+        },
+        "Web" : {
+			"Type" : "AWS::CloudFormation::Stack",
+			"Properties" : {
+	           "TemplateURL" : "https://s3.amazonaws.com/boomcloud-templates/web.cfn",
+	           "Parameters" : {
+	               "KeyName" : "boomcloud-prod",				
+				   "Environment" : "production",
+				   "DomainName" : "boomcloud.com",
+				   "WebServerInstanceType" : { "Ref" : "WebServerInstanceType" },				   
+				   "WebServerFleetMinimumSize" : { "Ref" : "WebServerFleetMinimumSize" },				   
+				   "WebServerFleetMaximumSize" : { "Ref" : "WebServerFleetMaximumSize" },				   
+				   "WebServerFleetDesiredSize" : { "Ref" : "WebServerFleetDesiredSize" },				   
+				   "VPC" : { "Fn::GetAtt" : [ "VPC" , "Outputs.VPC" ] },
+				   "PublicSubnet1" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PublicSubnet1" ] },
+				   "PublicSubnet2" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PublicSubnet2" ] },
+				   "PrivateSubnet1" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PrivateSubnet1" ] },
+				   "PrivateSubnet2" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PrivateSubnet2" ] },
+				   "NotificationTopic" : { "Fn::GetAtt" : [ "VPC" , "Outputs.NotificationTopic" ] },
+				   "BastionSecurityGroup" : { "Fn::GetAtt" : [ "VPC" , "Outputs.BastionSecurityGroup" ] },
+				   "WebSecurityGroup" : { "Fn::GetAtt" : [ "VPC" , "Outputs.WebSecurityGroup" ] },
+				   "DatabaseEndpoint" : { "Fn::GetAtt" : [ "Mongo" , "Outputs.DatabaseEndpoint" ] }
+	           }
+   	       }
+        },
+        "Mongo" : {
+  	       "Type" : "AWS::CloudFormation::Stack",
+	       "Properties" : {
+	           "TemplateURL" : "https://s3.amazonaws.com/boomcloud-templates/mongo.cfn",
+	           "Parameters" : {
+	               "KeyName" : "boomcloud-prod",				
+				   "Environment" : "production",
+				   "MongoInstanceType" : { "Ref" : "MongoInstanceType" },
+				   "DataSecurityGroup" : { "Fn::GetAtt" : [ "VPC" , "Outputs.DataSecurityGroup" ] },
+				   "PrivateSubnet1" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PrivateSubnet1" ] },
+				   "PrivateSubnet2" : { "Fn::GetAtt" : [ "VPC" , "Outputs.PrivateSubnet2" ] },
+				   "NotificationTopic" : { "Fn::GetAtt" : [ "VPC" , "Outputs.NotificationTopic" ] }
+	           }
+   	       }
+        }		
+	},
+	"Outputs" : {
+		"VPC" : {
+		  "Description" : "ID of the VPC",
+		  "Value" :  { "Fn::GetAtt" : [ "VPC" , "Outputs.VPC" ] }
+		}
+	}
+}

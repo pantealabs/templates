@@ -1,0 +1,157 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Description" : "Data layer",
+	"Parameters" : {
+		"VPC" : {
+			"Type" : "AWS::EC2::VPC::Id"
+		},
+		"Environment" : {
+			"Description" : "Environment, one of development, staging, or production",
+			"Type" : "String",
+			"AllowedValues" : [ "development", "staging", "production"],
+			"Default":"development"
+		},
+		"DatabaseUser": {
+			"Description" : "The database admin account username",
+			"Type": "String",
+			"MinLength": "1",
+			"MaxLength": "16",
+			"AllowedPattern" : "[a-zA-Z][a-zA-Z0-9]*",
+			"ConstraintDescription" : "must begin with a letter and contain only alphanumeric characters."
+		},
+		"DatabasePassword": {
+			"NoEcho": "true",
+			"Description" : "The database admin account password",
+			"Type": "String",
+			"MinLength": "1",
+			"MaxLength": "41",
+			"AllowedPattern" : "[a-zA-Z0-9]+",
+			"ConstraintDescription" : "must contain only alphanumeric characters."
+		},		
+		"DatabaseClass" : {
+			"Default" : "db.t1.micro",
+			"Description" : "Database instance class",
+			"Type" : "String",
+			"AllowedValues" : [ "db.t1.micro", "db.m1.small", "db.m1.medium", "db.m1.large", "db.m1.xlarge", "db.m2.xlarge", "db.m2.2xlarge", "db.m2.4xlarge", "db.cr1.8xlarge" ],
+			"ConstraintDescription" : "must select a valid database instance type."
+		},
+		"DatabaseStorage" : {
+			"Default": "5",
+			"Description" : "The size of the database (Gb)",
+			"Type": "Number",
+			"MinValue": "5",
+			"MaxValue": "1024",
+			"ConstraintDescription" : "must be between 5 and 1024Gb."
+		},		
+		"DataWriterSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup::Id"
+		},		
+		"DataReaderSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup::Id"
+		},		
+		"DataReporterSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup::Id"
+		},		
+		"DataSubnet1" : {
+			"Type" : "AWS::EC2::Subnet::Id"
+		},
+		"DataSubnet2" : {
+			"Type" : "AWS::EC2::Subnet::Id"
+		},		
+		"NotificationTopic" : {
+			"Type" : "String"
+		}
+	},
+	"Conditions" : {
+		"IsDevelopment" : {"Fn::Equals" : [{"Ref" : "Environment"}, "development"]},
+		"IsProduction" : { "Fn::Or" : [{"Fn::Equals" : [{"Ref" : "Environment"}, "production"]}, {"Fn::Equals" : [{"Ref" : "Environment"}, "staging"]}]}	
+	},
+	"Mappings" : {
+	},
+	"Resources" : {
+		"DatabaseSubnetGroup" : {
+			"Type" : "AWS::RDS::DBSubnetGroup",
+			"Properties" : {
+				"DBSubnetGroupDescription" : "Subnets available for the RDS DB Instance",
+				"SubnetIds" : [ { "Ref" : "DataSubnet1" }, { "Ref" : "DataSubnet2" }]
+			}
+		},
+		"Master" : {
+			"Type" : "AWS::RDS::DBInstance",
+			"DeletionPolicy" : "Snapshot",
+			"Properties" : {
+				"AllocatedStorage" : { "Ref" : "DatabaseStorage" },
+				"DBInstanceClass" : { "Ref" : "DatabaseClass" },
+				"MasterUsername" : { "Ref" : "DatabaseUser" } ,
+				"MasterUserPassword" : { "Ref" : "DatabasePassword" },
+				"Engine" : "MySQL",
+				"EngineVersion" : "5.6.21",
+				"MultiAZ" : { "Fn::If" : [ "IsProduction", "true", "false"] },
+				"PubliclyAccessible" : { "Fn::If" : [ "IsProduction", "false", "true"] },
+				"DBSubnetGroupName" : { "Ref" : "DatabaseSubnetGroup" },
+				"VPCSecurityGroups" : [ { "Ref" : "DataWriterSecurityGroup" } ],
+				"BackupRetentionPeriod" : "35",
+				"Tags" : [ 
+					{ "Key" : "Name", "Value" : { "Fn::Join" : [" ",[{"Ref" : "Environment"}, "Master"]]} },
+					{ "Key" : "Environment", "Value" : { "Ref" : "Environment" }},
+					{ "Key" : "Role", "Value" : "Master"}										
+				]
+			}
+		},
+		"ReadReplica1" : {
+			"Type" : "AWS::RDS::DBInstance",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"SourceDBInstanceIdentifier" : { "Ref" : "Master" },
+				"AllocatedStorage" : { "Ref" : "DatabaseStorage" },
+				"DBInstanceClass" : { "Ref" : "DatabaseClass" },
+				"Engine" : "MySQL",
+				"EngineVersion" : "5.6.21",
+				"VPCSecurityGroups" : [ { "Ref" : "DataReaderSecurityGroup" } ],
+				"Tags" : [ 
+					{ "Key" : "Name", "Value" : { "Fn::Join" : [" ",[{"Ref" : "Environment"}, "Read Replica"]]} },
+					{ "Key" : "Environment", "Value" : { "Ref" : "Environment" }},
+					{ "Key" : "Role", "Value" : "Read Replica"}										
+				]
+			}
+		},
+		"Reporting" : {
+			"Type" : "AWS::RDS::DBInstance",
+			"Condition" : "IsProduction",
+			"Properties" : {
+				"SourceDBInstanceIdentifier" : { "Ref" : "Master" },
+				"AllocatedStorage" : { "Ref" : "DatabaseStorage" },
+				"DBInstanceClass" : { "Ref" : "DatabaseClass" },
+				"PubliclyAccessible" : "true",
+				"Engine" : "MySQL",
+				"EngineVersion" : "5.6.21",
+				"VPCSecurityGroups" : [ { "Ref" : "DataReporterSecurityGroup" } ],
+				"Tags" : [ 
+					{ "Key" : "Name", "Value" : { "Fn::Join" : [" ",[{"Ref" : "Environment"}, "Reporting"]]} },
+					{ "Key" : "Environment", "Value" : { "Ref" : "Environment" }},
+					{ "Key" : "Role", "Value" : "Reporting"}										
+				]
+			}
+		}		
+	},
+	"Outputs" : {
+		"MasterEndpoint" : {
+			"Description" : "RDS database endpoint",
+			"Value" :  {"Fn::GetAtt":["Master","Endpoint.Address"]}
+		},
+		"MasterPort" : {
+			"Description" : "RDS database port",
+			"Value" :  {"Fn::GetAtt":["Master","Endpoint.Port"]}
+		},
+		"ReadReplicaEndpoints" : {
+			"Condition" : "IsProduction",
+			"Description" : "RDS database endpoint",
+			"Value" :  {"Fn::Join":[", ", [{"Fn::GetAtt":["ReadReplica1","Endpoint.Address"]}]]}
+		},
+		"ReportingEndpoints" : {
+			"Condition" : "IsProduction",
+			"Description" : "RDS database endpoint",
+			"Value" :  {"Fn::GetAtt":["Reporting","Endpoint.Address"]}
+		}
+	}
+}
