@@ -1,0 +1,131 @@
+{
+	"AWSTemplateFormatVersion" : "2010-09-09",
+	"Description" : "Beanstalk layer",
+	"Parameters" : {
+		"KeyName" : {
+			"Description" : "Public/private key pairs allow you to securely connect to your instance after it launches",
+			"Type" : "AWS::EC2::KeyPair::KeyName"
+		},
+		"Environment" : {
+			"Description" : "Environment, one of development, staging, or production",
+			"Type" : "String",
+			"AllowedValues" : [ "development", "staging", "production"]
+		},
+		"AppAPIInstanceType" : {
+			"Description" : "Web server instance type",
+			"Type" : "String",
+			"Default" : "t2.micro",
+			"AllowedValues" : [ "t2.micro", "t2.small", "t2.medium", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge", "r3.large", "r3.xlarge","r3.2xlarge","r3.4xlarge","r3.8xlarge" ],
+			"ConstraintDescription" : "must be a valid EC2 instance type."
+		},
+	  "EBApplicationName" : {
+		"Description" : "Elasticbeanstalk Application Name",
+		"Type" : "String",
+		"Default" : "Sample Application"
+	  },
+		"VPC" : {
+			"Type" : "AWS::EC2::VPC::Id"
+		},
+		"PublicSubnet1" : {
+			"Type" : "AWS::EC2::Subnet::Id"
+		},
+		"PublicSubnet2" : {
+			"Type" : "AWS::EC2::Subnet::Id"
+		},
+		"PrivateSubnet1" : {
+			"Type" : "AWS::EC2::Subnet::Id"
+		},
+		"PrivateSubnet2" : {
+			"Type" : "AWS::EC2::Subnet::Id"
+		},
+		"NotificationTopic" : {
+			"Type" : "String"
+		},
+		"DBUsername" : {
+			"Type" : "String"
+		},
+		"DBPassword" : {
+			"NoEcho": "true",
+			"Type" : "String"
+		},
+		"DBHostname" : {
+			"Type" : "String"
+		},
+		"DBPort" : {
+			"Type" : "String"
+		},							
+		"WebSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup::Id"
+		},
+		"BastionSecurityGroup" : {
+			"Type" : "AWS::EC2::SecurityGroup::Id"
+		}							
+	},
+	"Mappings" : {
+	},
+	"Conditions" : {
+		"IsDevelopment" : {"Fn::Equals" : [{"Ref" : "Environment"}, "development"]},
+		"IsProduction" : { "Fn::Or" : [{"Fn::Equals" : [{"Ref" : "Environment"}, "production"]}, {"Fn::Equals" : [{"Ref" : "Environment"}, "staging"]}]}	
+	},
+	"Resources" : {
+		"ChinookBookApplication" : {
+			"Type" : "AWS::ElasticBeanstalk::Application",
+			"Properties" : {
+				"Description" : "ChinookBook Beanstalk App",
+			  	"ApplicationName": { "Ref" : "EBApplicationName" },
+				"ApplicationVersions" : [{
+					"VersionLabel" : "Initial Version",
+					"Description" : "Version 1.0",
+					"SourceBundle" : {
+						"S3Bucket" : { "Fn::Join" : ["-", ["elasticbeanstalk-samples", { "Ref" : "AWS::Region" }]]},
+						"S3Key" : "php-sample.zip"
+					}
+				}]				
+			}
+		},
+		"AppAPIEnvironment" : {
+			"Type" : "AWS::ElasticBeanstalk::Environment",
+			"Properties" : {
+				"ApplicationName" : { "Ref" : "ChinookBookApplication" },
+				"Description" :  "AWS Elastic Beanstalk Environment running Python Sample Application",
+				"SolutionStackName" : "64bit Amazon Linux 2014.03 v1.0.9 running PHP 5.5",
+				"OptionSettings" : [
+					{"Namespace" : "aws:autoscaling:launchconfiguration", "OptionName" : "EC2KeyName", "Value" : { "Ref" : "KeyName" }},
+					{"Namespace" : "aws:autoscaling:launchconfiguration", "OptionName" : "InstanceType", "Value" : { "Ref" : "AppAPIInstanceType" }},
+					{"Namespace" : "aws:autoscaling:launchconfiguration", "OptionName" : "SSHSourceRestriction", "Value" : { "Fn::Join" : [ "", ["tcp,22,22,", { "Ref" : "BastionSecurityGroup" }]]}},
+					{"Namespace" : "aws:autoscaling:launchconfiguration", "OptionName" : "SecurityGroups", "Value" : { "Ref" : "WebSecurityGroup" }},
+					
+					{"Namespace" : "aws:ec2:vpc", "OptionName" : "VPCId", "Value" : { "Ref" : "VPC" }},
+					{"Namespace" : "aws:ec2:vpc", "OptionName" : "Subnets", "Value" : { "Fn::Join": ["", [{ "Ref" : "PrivateSubnet1" },",",{"Ref" : "PrivateSubnet2" }]] }},
+					{"Namespace" : "aws:ec2:vpc", "OptionName" : "ELBSubnets", "Value" : { "Fn::Join": ["", [{ "Ref" : "PublicSubnet1" },",",{"Ref" : "PublicSubnet2" }]] }},
+					{"Namespace" : "aws:ec2:vpc", "OptionName" : "AssociatePublicIpAddress", "Value" : { "Fn::If" : [ "IsProduction", "false", "true"] }},
+					
+					{"Namespace": "aws:autoscaling:asg","OptionName": "MinSize","Value": "1"},
+					{"Namespace": "aws:autoscaling:asg","OptionName": "MaxSize","Value": "1"},
+					
+					{"Namespace": "aws:elb:loadbalancer", "OptionName" : "CrossZone", "Value" : "true"},
+					
+					{"Namespace": "aws:autoscaling:trigger","OptionName": "MeasureName","Value": "CPUUtilization"},
+					{"Namespace": "aws:autoscaling:trigger","OptionName": "LowerThreshold","Value": "50"},
+					{"Namespace": "aws:autoscaling:trigger","OptionName": "UpperThreshold","Value": "75"},
+					{"Namespace": "aws:autoscaling:trigger","OptionName": "Unit","Value": "Percent"},
+					
+					{"Namespace": "aws:elasticbeanstalk:environment","OptionName": "EnvironmentType","Value": "LoadBalanced"},					
+					{"Namespace": "aws:elasticbeanstalk:sns:topics","OptionName": "Notification Topic ARN","Value": { "Ref" : "NotificationTopic" }},	
+					
+					{"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "RDS_USERNAME", "Value": { "Ref" : "DBUsername" }},
+					{"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "RDS_PASSWORD", "Value": { "Ref" : "DBPassword" }},
+					{"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "RDS_HOSTNAME", "Value": { "Ref" : "DBHostname" }},
+					{"Namespace": "aws:elasticbeanstalk:application:environment", "OptionName": "RDS_PORT", "Value": { "Ref" : "DBPort" }}
+				],
+				"VersionLabel" : "Initial Version"
+			}
+		}	
+	},
+	"Outputs" : {
+		"AppAPIEndpointURL" : {
+			"Description" : "App-API Endpoint URL",
+			"Value" :  {"Fn::GetAtt":["AppAPIEnvironment","EndpointURL"]}
+		}
+	}
+}
