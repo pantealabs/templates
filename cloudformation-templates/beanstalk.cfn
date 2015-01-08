@@ -18,6 +18,13 @@
 			"AllowedValues" : [ "t2.micro", "t2.small", "t2.medium", "m3.medium", "m3.large", "m3.xlarge", "m3.2xlarge", "c3.large", "c3.xlarge", "c3.2xlarge", "c3.4xlarge", "c3.8xlarge", "r3.large", "r3.xlarge","r3.2xlarge","r3.4xlarge","r3.8xlarge" ],
 			"ConstraintDescription" : "must be a valid EC2 instance type."
 		},
+		"SolutionStackName" : {
+			"Description" : "Elasticbeans talk stack type",
+			"Type" : "String",
+			"Default" : "64bit Amazon Linux 2014.03 v1.0.9 running PHP 5.5",
+			"AllowedValues" : [ "64bit Amazon Linux 2014.03 v1.0.9 running PHP 5.5"],
+			"ConstraintDescription" : "must be a valid solution stack"
+		},
 		"VPC" : {
 			"Type" : "AWS::EC2::VPC::Id"
 		},
@@ -81,8 +88,8 @@
 			"Type" : "AWS::ElasticBeanstalk::Environment",
 			"Properties" : {
 				"ApplicationName" : { "Ref" : "ChinookBookApplication" },
-				"Description" :  "AWS Elastic Beanstalk Environment running Python Sample Application",
-				"SolutionStackName" : "64bit Amazon Linux 2014.03 v1.0.9 running PHP 5.5",
+				"Description" :  "AWS Elastic Beanstalk Environment",
+				"SolutionStackName" : { "Ref" : "SolutionStackName" },
 				"OptionSettings" : [
 					{"Namespace" : "aws:autoscaling:launchconfiguration", "OptionName" : "EC2KeyName", "Value" : { "Ref" : "KeyName" }},
 					{"Namespace" : "aws:autoscaling:launchconfiguration", "OptionName" : "InstanceType", "Value" : { "Ref" : "AppAPIInstanceType" }},

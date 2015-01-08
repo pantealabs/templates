@@ -86,7 +86,7 @@
 		}
 	  }
 	},
-	"Beanstalk" : {
+	"AdminApp" : {
 	  "Type" : "AWS::CloudFormation::Stack",
 	  "Properties" : {
 		"TemplateURL" : "https://s3.amazonaws.com/chinookbook-deploy/templates/beanstalk_64bit_amazon_linux_2014.03_v1.0.9_running_php_5.5.cfn",
@@ -111,7 +111,7 @@
 
 	  }
 	},
-	"Beanstalk" : {
+	"ApiApp" : {
 	  "Type" : "AWS::CloudFormation::Stack",
 	  "Properties" : {
 		"TemplateURL" : "https://s3.amazonaws.com/chinookbook-deploy/templates/beanstalk_64bit_amazon_linux_2014.03_v1.0.9_running_php_5.5.cfn",
